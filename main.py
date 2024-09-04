@@ -19,18 +19,6 @@ def ttt():
     return f"[{datetime.now().strftime('%H:%M:%S.%f')}]"
 
 
-def supercos(x, n):
-    for _ in range(n):
-        x = np.sin(x)
-    return x
-
-
-def super_uhh(x, n):
-    for _ in range(n):
-        x = x**2 + C
-    return x
-
-
 def generate_points(r1, r2, i1, i2, n):
     """Generates n uniformly distributed complex numbers."""
     points = np.random.uniform(r1, r2, n) + 1j * np.random.uniform(i1, i2, n)
@@ -43,13 +31,22 @@ def test_convergence(arr, f, iter_count=ITER_COUNT, tolerance=1e-12):
     def superf(z, n):
         for i in range(n):
             if i % (iter_count // 10) == 0:
+                # Prints on every 10%
                 print(ttt(), f"iter: {i}")
             z = f(z)
         return z
 
-    res = superf(arr, iter_count)
+    # TODO: this check will only check for convergence, and not for 
+    # "not divergence", unboundedness. For example, if some number 
+    # gets stuck in a cycle of some sort, the distances between
+    # the cycle's members may exceed the absolute error. Instead,
+    # maybe there needs to be a check if |superf(z)| > some_big_num,
+    # but there may be issues with NaNs and stuff.
+
+    # iter_count-1 because we apply f later (might change)
+    res = superf(arr, iter_count - 1)
     res1 = f(res)
-    # if the next application of cos is approx the same as
+    # if the next application of f is approx the same as
     # the previous one, then the original number converges.
     err = np.abs(res1 - res)
     return arr[err < tolerance]  # filter those that converged.
@@ -58,6 +55,7 @@ def test_convergence(arr, f, iter_count=ITER_COUNT, tolerance=1e-12):
 def zoom(x1, x2, y1, y2, zoom_in=True, t=T):
     """Given the current viewbox (x1,y1), (x2,y2), zoom in by t"""
     # equation of a line through (x1,y1), (x2,y2)
+    assert (x2 - x1) > 0
     f = lambda x: (((y2 - y1) / (x2 - x1)) * (x - x1) + y1)  # x2 is never x1
     xm = (x1 + x2) / 2
     ym = (y1 + y2) / 2
@@ -95,17 +93,17 @@ def on_press(event):
     sys.stdout.flush()
     match event.key:
         case "up":
-            r1, r2, i1, i2 = pan_y(r1, r2, i1, i2, True)
+            r1, r2, i1, i2 = pan_y(r1, r2, i1, i2, is_pos=True)
         case "down":
-            r1, r2, i1, i2 = pan_y(r1, r2, i1, i2, False)
+            r1, r2, i1, i2 = pan_y(r1, r2, i1, i2, is_pos=False)
         case "right":
-            r1, r2, i1, i2 = pan_x(r1, r2, i1, i2, True)
+            r1, r2, i1, i2 = pan_x(r1, r2, i1, i2, is_pos=True)
         case "left":
-            r1, r2, i1, i2 = pan_x(r1, r2, i1, i2, False)
+            r1, r2, i1, i2 = pan_x(r1, r2, i1, i2, is_pos=False)
         case "i":
-            r1, r2, i1, i2 = zoom(r1, r2, i1, i2, True)
+            r1, r2, i1, i2 = zoom(r1, r2, i1, i2, zoom_in=True)
         case "k":
-            r1, r2, i1, i2 = zoom(r1, r2, i1, i2, False)
+            r1, r2, i1, i2 = zoom(r1, r2, i1, i2, zoom_in=False)
         case "+":
             N *= 2
         case "-":
@@ -125,7 +123,9 @@ def plot_the_thing(ax, r1, r2, i1, i2, n=N):
     points = generate_points(r1, r2, i1, i2, n)
     print(ttt(), f"testing convergence: {N} points, {ITER_COUNT} iterations...")
     convergent = test_convergence(points, F, tolerance=1e-12)
-    min_conv = round(abs(np.min(convergent, where=~np.isnan(convergent), initial=999)),4)
+    min_conv = round(
+        abs(np.min(convergent, where=~np.isnan(convergent), initial=999)), 4
+    )
     print(
         ttt(),
         f"done, convergence ratio: {convergent.size/N * 100}%, min value: {min_conv}",
