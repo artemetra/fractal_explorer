@@ -1,23 +1,22 @@
 from typing import Callable
 from matplotlib.axes import Axes
-import mpmath as mp
 import numpy as np
 import matplotlib.pyplot as plt
 import sys
-import warnings
 from datetime import datetime
 
-INIT_N = 2**11
+INIT_N = 2**12
 point_count = INIT_N
 # 10 is typically enough
-ITER_COUNT = 10
+ITER_COUNT = 100
 T = 0.1
 D_MULT = 0.2  # proportion of the viewport to pan
 C = 1
+angle = 0
 
 
 def F(z):
-    return z**z**z
+    return np.cos(z)
 
 
 # initial r1, initial r2, ...
@@ -27,12 +26,6 @@ r1, r2, i1, i2 = IR1, IR2, II1, II2
 
 def ttt():
     return f"[{datetime.now().strftime('%H:%M:%S.%f')}]"
-
-
-def generate_points(r1, r2, i1, i2, n) -> np.ndarray:
-    """Generates n uniformly distributed complex numbers."""
-    points = np.random.uniform(r1, r2, n) + 1j * np.random.uniform(i1, i2, n)
-    return points
 
 
 def test_convergence(
@@ -48,7 +41,7 @@ def test_convergence(
             if iter_count >= 10:
                 if i % (iter_count // 10) == 0:
                     # Prints on every 10%
-                    print(ttt(), f"iter: {i}", end="\r")
+                    print(ttt(), f"iter: {i+1}", end="\r")
             z = f(z)
         print()
         return z
@@ -60,8 +53,7 @@ def test_convergence(
     # maybe there needs to be a check if |superf(z)| > some_big_num,
     # but there may be issues with NaNs and stuff.
 
-    # iter_count-1 because we apply f later (might change)
-    res = superf(arr, iter_count - 1)
+    res = superf(arr, iter_count)
     res1 = f(res)
     # if the next application of f is approx the same as
     # the previous one, then the original number converges.
@@ -93,24 +85,45 @@ def zoom(x1: float, x2: float, y1: float, y2: float, zoom_in=True, t=T):
     return (x1p, x2p, y1p, y2p)
 
 
+def generate_points(r1, r2, i1, i2, n) -> np.ndarray:
+    """Generates n uniformly distributed complex numbers."""
+    # We need to expand the limits by a factor of sqrt(2) in order to support rotation
+    r1p, r2p, i1p, i2p = zoom(r1, r2, i1, i2, zoom_in=False, t=1 / (2 * np.sqrt(2)))
+    points = np.random.uniform(r1p, r2p, n) + 1j * np.random.uniform(i1p, i2p, n)
+    return points
+
+
 def pan_x(x1: float, x2: float, y1: float, y2: float, is_pos=True, d_mult=D_MULT):
+    global angle
     d = ((abs(x1 - x2)) / 2) * d_mult
     if not is_pos:
         d *= -1
-    return (x1 + d, x2 + d, y1, y2)
+    return (
+        x1 + d * np.cos(angle),
+        x2 + d * np.cos(angle),
+        y1 - d * np.sin(angle),
+        y2 - d * np.sin(angle),
+    )
 
 
 def pan_y(x1: float, x2: float, y1: float, y2: float, is_pos=True, d_mult=D_MULT):
+    global angle
     d = ((abs(x1 - x2)) / 2) * d_mult
     if not is_pos:
         d *= -1
-    return (x1, x2, y1 + d, y2 + d)
+    return (
+        x1 + d * np.sin(angle),
+        x2 + d * np.sin(angle),
+        y1 + d * np.cos(angle),
+        y2 + d * np.cos(angle),
+    )
 
 
 def on_press(event):
     # TODO: fix this!!!
     global r1, r2, i1, i2  # Use global variables to update the bounds
     global point_count
+    global angle
     sys.stdout.flush()
     match event.key:
         case "up":
@@ -125,6 +138,12 @@ def on_press(event):
             r1, r2, i1, i2 = zoom(r1, r2, i1, i2, zoom_in=True)
         case "k":
             r1, r2, i1, i2 = zoom(r1, r2, i1, i2, zoom_in=False)
+        case "j":
+            angle -= (2 * np.pi) / 32
+            angle %= 2 * np.pi
+        case "l":
+            angle += (2 * np.pi) / 32
+            angle %= 2 * np.pi
         case "+":
             point_count *= 2
         case "-":
@@ -138,6 +157,7 @@ def on_press(event):
             # reset viewport
             r1, r2, i1, i2 = IR1, IR2, II1, II2
             point_count = INIT_N
+            angle = 0
         case _ as key:
             print(f"key: {key}")
             # Explicitly don't replot whenever any other key is pressed
@@ -152,18 +172,29 @@ def plot_the_thing(ax: Axes, r1: float, r2: float, i1: float, i2: float, n=point
     print(
         ttt(), f"testing convergence: {point_count} points, {ITER_COUNT} iterations..."
     )
-    convergent = test_convergence(points, F, tolerance=1e-12)
+    convergent = test_convergence(points, F, tolerance=1e-14)
     min_conv = round(
-        abs(np.min(convergent, where=~np.isnan(convergent), initial=999)), 4
+        abs(np.min(convergent, where=~np.isnan(convergent), initial=99999)), 4
     )
+
+    # https://math.stackexchange.com/questions/2119527/how-do-you-rotate-a-point-in-the-complex-plane-by-theta-radians
+    viewport_center = (r1 + r2) / 2 + 1j * (i1 + i2) / 2
+    w = viewport_center * np.ones(convergent.shape)
+    convergent = w + np.exp(1j * angle) * (convergent - w)
+
     ax.scatter(convergent.real, convergent.imag, s=0.15)
     ax.set_xlim((r1, r2))
     ax.set_ylim((i1, i2))
     plt.draw()
     print(
         ttt(),
-        f"done, convergence ratio: {convergent.size/point_count * 100}%, min value: {min_conv}",
+        f"done, convergence ratio: {round(convergent.size/point_count * 100, 3)}%, min value: {min_conv}",
     )
+    fmt_viewport_center = (
+        float(round(viewport_center.real, 5)),
+        float(round(viewport_center.imag, 5)),
+    )
+    ax.set_title(f"viewport_center={fmt_viewport_center}; angle={round(angle, 5)}")
 
 
 fig, ax = plt.subplots()
