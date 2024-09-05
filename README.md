@@ -14,7 +14,6 @@ The above two are useful for quicker exploration of complex fractals and allow t
 
 ## TODO
 - Code cleanup
-- Rotations? (multiply by exp(i*pi/n)?)
 - Make it look nicer lol
 - Remove unnecessary logs
 - Get it to display the mandelbrot set
