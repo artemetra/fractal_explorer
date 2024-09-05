@@ -8,6 +8,8 @@ This fractal explorer uses key inputs to move around a fractal. The fractal defi
 - <kbd>+</kbd> - rerender with more points ("more detail")
 - <kbd>-</kbd> - rerender with less points ("less detail")
 The above two are useful for quicker exploration of complex fractals and allow the user to get the target viewport faster
+- <kbd>r</kbd> - rerender without any changes (generates new random points)
+- <kbd>⌘ Command</kbd> + <kbd>r</kbd> - reset everything
 - <kbd>q</kbd> - quit
 
 ## TODO
