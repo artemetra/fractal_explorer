@@ -16,4 +16,3 @@ The above two are useful for quicker exploration of complex fractals and allow t
 - Code cleanup
 - Make it look nicer lol
 - Remove unnecessary logs
-- Get it to display the mandelbrot set
