@@ -1,22 +1,25 @@
-from typing import Callable
+from typing import Callable, Any
 from matplotlib.axes import Axes
 import numpy as np
 import matplotlib.pyplot as plt
 import sys
 from datetime import datetime
+from enum import Enum
 
 INIT_N = 2**12
 point_count = INIT_N
 # 10 is typically enough
-ITER_COUNT = 100
+ITER_COUNT = 1000
 T = 0.1
 D_MULT = 0.2  # proportion of the viewport to pan
 C = 1
 angle = 0
+BOUND = 2
 
 
-def F(z):
-    return np.cos(z)
+def F(z: np.ndarray, f_args: list[Any], f_kwargs: dict[Any, Any]) -> np.ndarray:
+    res: np.ndarray = z**2 + f_args[0]
+    return res
 
 
 # initial r1, initial r2, ...
@@ -28,11 +31,19 @@ def ttt():
     return f"[{datetime.now().strftime('%H:%M:%S.%f')}]"
 
 
+class ConvergenceStyle(Enum):
+    DIFFERENCE = (1,)
+    BOUND = (2,)
+
+
 def test_convergence(
     arr: np.ndarray,
-    f: Callable[[np.ndarray], np.ndarray],
+    f: Callable[[np.ndarray, list, dict], np.ndarray],
     iter_count=ITER_COUNT,
     tolerance=1e-12,
+    convergence_style=ConvergenceStyle.BOUND,
+    f_args=[],
+    f_kwargs={},
 ):
     """Tests the convergence for arr of complex numbers."""
 
@@ -42,23 +53,24 @@ def test_convergence(
                 if i % (iter_count // 10) == 0:
                     # Prints on every 10%
                     print(ttt(), f"iter: {i+1}", end="\r")
-            z = f(z)
+            z = f(z, f_args, f_kwargs)
         print()
         return z
 
-    # TODO: this check will only check for convergence, and not for
-    # "not divergence", unboundedness. For example, if some number
-    # gets stuck in a cycle of some sort, the distances between
-    # the cycle's members may exceed the absolute error. Instead,
-    # maybe there needs to be a check if |superf(z)| > some_big_num,
-    # but there may be issues with NaNs and stuff.
-
-    res = superf(arr, iter_count)
-    res1 = f(res)
-    # if the next application of f is approx the same as
-    # the previous one, then the original number converges.
-    err = np.abs(res1 - res)
-    return arr[err < tolerance]  # filter those that converged.
+    match convergence_style:
+        case ConvergenceStyle.BOUND:
+            res = superf(arr, iter_count)
+            res = np.abs(res)
+            return arr[res < BOUND]
+        case ConvergenceStyle.DIFFERENCE:
+            res = superf(arr, iter_count)
+            res1 = f(res, f_args, f_kwargs)
+            # if the next application of f is approx the same as
+            # the previous one, then the original number converges.
+            err = np.abs(res1 - res)
+            return arr[err < tolerance]  # filter those that converged.
+        case _:
+            raise NotImplementedError
 
 
 def zoom(x1: float, x2: float, y1: float, y2: float, zoom_in=True, t=T):
@@ -88,6 +100,8 @@ def zoom(x1: float, x2: float, y1: float, y2: float, zoom_in=True, t=T):
 def generate_points(r1, r2, i1, i2, n) -> np.ndarray:
     """Generates n uniformly distributed complex numbers."""
     # We need to expand the limits by a factor of sqrt(2) in order to support rotation
+    # TODO? not do this maybe? the problem is that only ≈63% of points are actually being
+    # displayed at most, with the rest being out of the viewport but still tested
     r1p, r2p, i1p, i2p = zoom(r1, r2, i1, i2, zoom_in=False, t=1 / (2 * np.sqrt(2)))
     points = np.random.uniform(r1p, r2p, n) + 1j * np.random.uniform(i1p, i2p, n)
     return points
@@ -167,12 +181,16 @@ def on_press(event):
 
 def plot_the_thing(ax: Axes, r1: float, r2: float, i1: float, i2: float, n=point_count):
     ax.clear()
+
     print(ttt(), "generating points...")
     points = generate_points(r1, r2, i1, i2, n)
+
     print(
         ttt(), f"testing convergence: {point_count} points, {ITER_COUNT} iterations..."
     )
-    convergent = test_convergence(points, F, tolerance=1e-14)
+    convergent = test_convergence(
+        points, F, tolerance=sys.float_info.epsilon, f_args=[points]
+    )
     min_conv = round(
         abs(np.min(convergent, where=~np.isnan(convergent), initial=99999)), 4
     )
@@ -185,10 +203,14 @@ def plot_the_thing(ax: Axes, r1: float, r2: float, i1: float, i2: float, n=point
     ax.scatter(convergent.real, convergent.imag, s=0.15)
     ax.set_xlim((r1, r2))
     ax.set_ylim((i1, i2))
+    plt.xlabel("Re(z)")
+    plt.ylabel("Im(z)")
     plt.draw()
+
+    conv_percentage = round(convergent.size / point_count * 100, 3)
     print(
         ttt(),
-        f"done, convergence ratio: {round(convergent.size/point_count * 100, 3)}%, min value: {min_conv}",
+        f"done, convergence ratio: {conv_percentage}%, min value: {min_conv}",
     )
     fmt_viewport_center = (
         float(round(viewport_center.real, 5)),
@@ -201,6 +223,4 @@ fig, ax = plt.subplots()
 plot_the_thing(ax, r1, r2, i1, i2)
 
 fig.canvas.mpl_connect("key_press_event", on_press)
-plt.xlabel("Re(z)")
-plt.ylabel("Im(z)")
 plt.show()
